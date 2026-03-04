@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JOFA – Grupo de Jovens | Santuário de Nossa Senhora de Fátima</title>
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+  import { getFirestore, collection, doc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBJRdqLxhP6Kd5UoA8ER4Hn1XRqEiYLJJU",
+    authDomain: "jofa---site.firebaseapp.com",
+    projectId: "jofa---site",
+    storageBucket: "jofa---site.firebasestorage.app",
+    messagingSenderId: "128896541892",
+    appId: "1:128896541892:web:4d5b1905e802dc190a1591",
+    measurementId: "G-DGWN6296BL"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // ---- AUTH STATE ----
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      window._firebaseUser = user;
+      window.adminLoggedIn = true;
+      if (typeof showAdminContent === 'function') showAdminContent();
+    } else {
+      window._firebaseUser = null;
+      window.adminLoggedIn = false;
+    }
+  });
+
+  // ---- LOGIN via Firebase ----
+  window.firebaseLogin = async function(email, password) {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return { ok: true };
+    } catch(e) {
+      return { ok: false, msg: e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential'
+        ? 'Senha incorreta. Tente novamente.'
+        : 'Erro ao entrar. Verifique seu e-mail e senha.' };
+    }
+  };
+
+  // ---- LOGOUT ----
+  window.firebaseLogout = async function() {
+    await signOut(auth);
+    window.adminLoggedIn = false;
+  };
+
+  // ---- LOAD DATA FROM FIRESTORE ----
+  async function loadFromFirestore() {
+    try {
+      const collections = ['testemunhos','reunioes','galeria','agenda'];
+      const results = {};
+      for (const col of collections) {
+        const snap = await getDocs(collection(db, col));
+        if (!snap.empty) {
+          // Sort by 'order' field
+          const items = [];
+          snap.forEach(d => items.push({id: d.id, ...d.data()}));
+          items.sort((a,b) => (a.order||0) - (b.order||0));
+          results[col] = items;
+        }
+      }
+      // Apply to global data arrays if data exists in Firestore
+      if (results.testemunhos && results.testemunhos.length) {
+        window.testimonialsData = results.testemunhos.map(d => ({
+          id: d.id, quote: d.quote, name: d.name, age: d.age, avatarColor: d.avatarColor
+        }));
+      }
+      if (results.reunioes && results.reunioes.length) {
+        window.reunioesData = results.reunioes.map(d => ({
+          emoji: d.emoji, bg: d.bg, photo: d.photo||'', tag: d.tag,
+          date: d.date, title: d.title, body: d.body
+        }));
+      }
+      if (results.galeria && results.galeria.length) {
+        window.galleryData = results.galeria.map(d => ({
+          id: d.id, label: d.label, bg: d.bg, src: d.src||''
+        }));
+      }
+      if (results.agenda && results.agenda.length) {
+        window.eventsData = results.agenda.map(d => ({
+          id: d.id, day: d.day, month: d.month, tag: d.tag,
+          title: d.title, details: d.details, gcalDate: d.gcalDate||''
+        }));
+      }
+      // Re-render with Firestore data
+      if (typeof renderAll === 'function') renderAll();
+      console.log('✅ Dados carregados do Firestore');
+    } catch(e) {
+      console.warn('⚠️ Firestore indisponível, usando dados locais:', e.message);
+    }
+  }
+
+  // ---- SAVE DATA TO FIRESTORE ----
+  window.saveToFirestore = async function() {
+    try {
+      // Save testemunhos
+      for (let i = 0; i < window.testimonialsData.length; i++) {
+        const t = window.testimonialsData[i];
+        await setDoc(doc(db, 'testemunhos', String(t.id || i)), {...t, order: i});
+      }
+      // Save reunioes
+      for (let i = 0; i < window.reunioesData.length; i++) {
+        const r = window.reunioesData[i];
+        await setDoc(doc(db, 'reunioes', String(i)), {...r, order: i});
+      }
+      // Save galeria
+      for (let i = 0; i < window.galleryData.length; i++) {
+        const g = window.galleryData[i];
+        await setDoc(doc(db, 'galeria', String(g.id || i)), {...g, order: i});
+      }
+      // Save agenda
+      for (let i = 0; i < window.eventsData.length; i++) {
+        const e = window.eventsData[i];
+        await setDoc(doc(db, 'agenda', String(e.id || i)), {...e, order: i});
+      }
+      return true;
+    } catch(e) {
+      console.error('❌ Erro ao salvar no Firestore:', e);
+      return false;
+    }
+  };
+
+  // Load on startup
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(loadFromFirestore, 500);
+  });
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header id="main-header">
+  <div class="logo-wrap" onclick="showPage('home')">
+    <img id="logoImg" src="assets/images/logo.jpg" alt="JOFA Logo">
+  </div>
+  <nav>
+    <a href="#" onclick="showPage('home');return false;" id="nav-home">Início</a>
+    <a href="#" onclick="showPage('sobre');return false;" id="nav-sobre">Quem Somos</a>
+    <a href="#" onclick="showPage('reunioes');return false;" id="nav-reunioes">Últimas Reuniões</a>
+    <a href="#" onclick="showPage('agenda');return false;" id="nav-agenda">Agenda</a>
+    <a href="#" onclick="showPage('home');scrollToSection('galeria');return false;" id="nav-galeria">Galeria</a>
+  </nav>
+  <div class="header-actions">
+    <!-- Dark mode icon button with sun/moon morph -->
+    <button class="theme-icon-btn" id="darkToggle" onclick="toggleTheme()" title="Alternar modo">
+      <svg class="sun-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
+        <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <svg class="moon-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <!-- Desktop: quick access icon + catequese button merged -->
+
+    <button class="icon-btn desktop-only" id="quickAccessBtn" title="Acesso rápido" style="font-size:18px;font-weight:300">＋</button>
+    <!-- Mobile: single combined button -->
+    <button class="btn-cta mobile-only" id="mobileQuickBtn" onclick="toggleMobileMenu()">
+      MENU ☰
+    </button>
+  </div>
+</header>
+
+<!-- MOBILE DRAWER OVERLAY -->
+<div class="mobile-overlay" id="mobileOverlay" onclick="closeMobile()"></div>
+
+<!-- MOBILE DRAWER -->
+<div class="mobile-drawer" id="mobileMenu">
+
+  <!-- Header -->
+  <div class="drawer-header">
+    <div class="drawer-logo">
+      <div class="drawer-logo-img">
+        <img src="" id="drawerLogo" alt="JOFA">
+      </div>
+      <div>
+        <div class="drawer-logo-text">JOFA</div>
+        <div class="drawer-logo-sub">Grupo de Jovens</div>
+      </div>
+    </div>
+    <button class="drawer-close" onclick="closeMobile()">✕</button>
+  </div>
+
+  <!-- Navigation -->
+  <div class="drawer-nav">
+    <div class="drawer-nav-label">Navegação</div>
+
+    <a class="drawer-item" href="#" onclick="showPage('home');closeMobile();return false;">
+      <div class="drawer-icon">🏠</div>
+      <div class="drawer-item-text">
+        <strong>Início</strong>
+        <span>Página principal</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="showPage('sobre');closeMobile();return false;">
+      <div class="drawer-icon">👥</div>
+      <div class="drawer-item-text">
+        <strong>Quem Somos</strong>
+        <span>Conheça o JOFA</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="showPage('reunioes');closeMobile();return false;">
+      <div class="drawer-icon">📖</div>
+      <div class="drawer-item-text">
+        <strong>Últimas Reuniões</strong>
+        <span>Resumos dos encontros</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="showPage('agenda');closeMobile();return false;">
+      <div class="drawer-icon">📅</div>
+      <div class="drawer-item-text">
+        <strong>Agenda</strong>
+        <span>Próximos eventos</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="showPage('home');scrollToSection('galeria');closeMobile();return false;">
+      <div class="drawer-icon">🖼️</div>
+      <div class="drawer-item-text">
+        <strong>Galeria</strong>
+        <span>Fotos dos eventos</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <div class="drawer-divider"></div>
+    <div class="drawer-nav-label">Acesso Rápido</div>
+
+    <a class="drawer-item" href="#" onclick="closeMobile();return false;">
+      <div class="drawer-icon">🙏</div>
+      <div class="drawer-item-text">
+        <strong>Pedidos de Oração</strong>
+        <span>Envie sua intenção</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="closeMobile();return false;">
+      <div class="drawer-icon">⬇️</div>
+      <div class="drawer-item-text">
+        <strong>Downloads</strong>
+        <span>Cifras e wallpapers</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+
+    <a class="drawer-item" href="#" onclick="closeMobile();return false;">
+      <div class="drawer-icon">🌟</div>
+      <div class="drawer-item-text">
+        <strong>Oportunidades</strong>
+        <span>Projetos sociais</span>
+      </div>
+      <span class="drawer-item-arrow">›</span>
+    </a>
+  </div>
+
+  <!-- CTA Button -->
+  <div class="drawer-cta-wrap">
+    
+  </div>
+
+</div>
+
+<!-- ======================== HOME PAGE ======================== -->
+<div class="page active" id="page-home">
+
+  <!-- HERO -->
+  <div class="hero" id="hero">
+    <img class="hero-img" id="heroImg" src="assets/images/hero.jpg" alt="Grupo JOFA no Santuário">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <p class="hero-eyebrow">Grupo de Jovens • Rio Grande / RS</p>
+      <h1 class="hero-title">Onde o Sim<br>de Maria Se<br>Renova em<br>Cada Jovem.</h1>
+      <p class="hero-subtitle">Grupo de Jovens JOFA &nbsp;|&nbsp; Santuário de Nossa Senhora de Fátima — Rio Grande/RS</p>
+    </div>
+    <div class="hero-scroll">↓</div>
+    <div style="position:absolute;bottom:0;left:0;right:0;height:160px;background:linear-gradient(to bottom,transparent 0%,transparent 30%,var(--bg-main) 100%);pointer-events:none;z-index:2;"></div>
+  </div>
+
+  <!-- ÚLTIMA REUNIÃO -->
+  <section class="content-section" id="quem-somos">
+    <div class="section-inner">
+      <h2 class="section-title reveal">Última Reunião</h2>
+      <div class="gold-line"></div>
+      <div id="ultimaReuniao"></div>
+    </div>
+  </section>
+
+  <!-- MURAL DE TESTEMUNHOS -->
+  <section class="content-section alt">
+    <div class="section-inner">
+      <h2 class="section-title reveal">Mural de Testemunhos</h2>
+      <div class="gold-line"></div>
+      <div class="carousel-wrap reveal">
+        <div class="carousel-track" id="cTrack"></div>
+      </div>
+      <div class="carousel-ctrl">
+        <button class="cbtn" id="cPrev">‹</button>
+        <div class="cdots" id="cDots"></div>
+        <button class="cbtn" id="cNext">›</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- GALERIA -->
+  <section class="content-section" id="galeria">
+    <div class="section-inner">
+      <h2 class="section-title reveal">Galeria</h2>
+      <div class="gold-line"></div>
+      <div class="gallery-grid reveal" id="galleryGrid"></div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="content-section alt">
+    <div class="section-inner">
+      <h2 class="section-title reveal">FAQ</h2>
+      <div class="gold-line"></div>
+      <div class="faq-list">
+        <div class="faq-item reveal" onclick="toggleFaq(this)">
+          <div class="faq-q"><span>Preciso ser católico para participar?</span><div class="faq-icon">▾</div></div>
+          <div class="faq-a">Com certeza! JOFA é um lugar de amigos abertos a todos. Chega que a casa é sua! Você não precisa ter certezas, só disposição para explorar a fé conosco.</div>
+        </div>
+        <div class="faq-item reveal reveal-delay-1" onclick="toggleFaq(this)">
+          <div class="faq-q"><span>Qual é a faixa etária do grupo?</span><div class="faq-icon">▾</div></div>
+          <div class="faq-a">Focamos em jovens de 12 a 22 anos. É a fase mais transformadora da vida e queremos caminhar junto com você nessa jornada!</div>
+        </div>
+        <div class="faq-item reveal reveal-delay-2" onclick="toggleFaq(this)">
+          <div class="faq-q"><span>Como funciona a Catequese?</span><div class="faq-icon">▾</div></div>
+          <div class="faq-a">É um papo massa para entender a fé de um jeito leve e profundo. São encontros semanais onde exploramos a vida, a espiritualidade e o Evangelho. Clica no botão de inscrição!</div>
+        </div>
+        <div class="faq-item reveal reveal-delay-3" onclick="toggleFaq(this)">
+          <div class="faq-q"><span>Quando e onde acontecem os encontros?</span><div class="faq-icon">▾</div></div>
+          <div class="faq-a">Os encontros acontecem aos sábados no Santuário de Nossa Senhora de Fátima em Rio Grande, RS. Siga nosso Instagram para ficar sempre por dentro do horário!</div>
+        </div>
+        <div class="faq-item reveal reveal-delay-4" onclick="toggleFaq(this)">
+          <div class="faq-q"><span>Tem custo para participar?</span><div class="faq-icon">▾</div></div>
+          <div class="faq-a">Os encontros regulares são gratuitos! Alguns retiros especiais podem ter uma contribuição simbólica, mas nunca deixaremos alguém de fora por questões financeiras.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-inner">
+      <div><div class="footer-map">📍 Santuário de<br>Nossa Senhora de Fátima<br>Rio Grande, RS</div></div>
+      <div class="footer-social">
+        <h4>Nos siga nas redes</h4>
+        <div class="social-icons">
+          <div class="sicon">📷</div>
+          <div class="sicon">💬</div>
+          <div class="sicon">▶️</div>
+        </div>
+        <div style="margin-top:24px;display:flex;align-items:center;justify-content:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:white;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+            <img id="footerLogo" src="assets/images/logo.jpg" style="width:34px;height:34px;-webkit-object-fit:cover;object-fit:cover;border-radius:50%;">
+          </div>
+          <div><div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:.95rem;color:white">JOFA</div><div style="font-size:.7rem;color:rgba(255,255,255,.5)">Grupo de Jovens</div></div>
+        </div>
+      </div>
+      <div class="footer-info">
+        <h4>Santuário de Fátima</h4>
+        <p>Santuário de Nossa Senhora de Fátima<br>Rio Grande, RS — Brasil<br><br>
+        <strong style="color:var(--gold)">Missas:</strong><br>
+        Seg – Sex: 7h e 19h<br>
+        Sábado: 8h e 19h<br>
+        Domingo: 8h, 10h e 19h</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2025 JOFA – Grupo de Jovens. Todos os direitos reservados.</p>
+      <p style="color:var(--gold);font-size:.75rem;font-family:'Montserrat',sans-serif;font-weight:600">Com Maria, pelo sim de cada jovem ✝</p>
+    </div>
+  </footer>
+</div>
+
+<!-- ======================== AGENDA PAGE ======================== -->
+<div class="page" id="page-agenda">
+  <div class="page-hero">
+    <h1>Agenda de Eventos</h1>
+    <div class="gold-line" style="margin:14px auto;"></div>
+    <p>Fique por dentro de todos os encontros, retiros e missas especiais do JOFA.</p>
+  </div>
+  <section class="content-section">
+    <div class="section-inner">
+      <div class="agenda-grid">
+        <!-- Mini Calendar -->
+        <div>
+          <div class="mini-cal">
+            <div class="cal-header">
+              <button class="cal-nav" onclick="calNav(-1)">‹</button>
+              <div class="cal-title" id="calTitle">Março 2026</div>
+              <button class="cal-nav" onclick="calNav(1)">›</button>
+            </div>
+            <div class="cal-days-header">
+              <div class="cal-day-label">D</div><div class="cal-day-label">S</div><div class="cal-day-label">T</div>
+              <div class="cal-day-label">Q</div><div class="cal-day-label">Q</div><div class="cal-day-label">S</div>
+              <div class="cal-day-label">S</div>
+            </div>
+            <div class="cal-days" id="calDays"></div>
+            <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--text-mid)"><div style="width:12px;height:12px;border-radius:3px;background:rgba(123,175,212,.3)"></div>Evento</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--text-mid)"><div style="width:12px;height:12px;border-radius:50%;background:var(--gold)"></div>Hoje</div>
+            </div>
+          </div>
+        </div>
+        <!-- Events List -->
+        <div class="events-list" id="eventsList"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ======================== REUNIÕES PAGE ======================== -->
+<div class="page" id="page-reunioes">
+  <div class="page-hero">
+    <h1>Últimas Reuniões</h1>
+    <div class="gold-line" style="margin:14px auto;"></div>
+    <p>Reviva os momentos mais marcantes dos nossos encontros e acompanhe os resumos.</p>
+  </div>
+  <section class="content-section">
+    <div class="section-inner">
+      <!-- Grid view -->
+      <div id="reunioesGrid"><div class="reunioes-grid" id="reunioesGridInner"></div></div>
+      <!-- Detail view -->
+      <div class="reuniao-detail" id="reuniaoDetail">
+        <button class="rd-back" onclick="closeReuniao()">← Voltar para Reuniões</button>
+        <div class="rd-hero-ph" id="rdHeroImg"></div>
+        <div class="rd-meta" id="rdMeta"></div>
+        <h2 class="rd-title" id="rdTitle"></h2>
+        <div class="rd-body" id="rdBody"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ======================== QUEM SOMOS PAGE ======================== -->
+<div class="page" id="page-sobre">
+  <!-- Full photo hero with gradient fade -->
+  <div style="position:relative;height:75vh;min-height:500px;overflow:hidden;">
+    <img src="assets/images/photo-sobre.jpg" alt="Grupo JOFA no Santuário" style="position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;-webkit-object-fit:cover;object-fit:cover;object-position:center 15%;">
+    <!-- blue tint overlay like home hero -->
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(10,20,55,0.45);pointer-events:none;"></div>
+    <!-- gradient fade to bg at bottom -->
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(to bottom,transparent 0%,transparent 50%,var(--bg-main) 100%);pointer-events:none;"></div>
+    <!-- text pinned higher -->
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:0 32px 120px;text-align:center;z-index:2;">
+      <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:8px;">Grupo de Jovens</div>
+      <h1 style="font-family:'Montserrat',sans-serif;font-weight:900;font-size:clamp(1.8rem,4vw,3rem);color:white;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;text-shadow:0 2px 16px rgba(0,0,0,0.6);">Quem Somos</h1>
+      <div style="width:50px;height:3px;background:var(--gold);border-radius:2px;margin:0 auto 12px;"></div>
+      <p style="max-width:520px;margin:0 auto;color:rgba(255,255,255,.8);font-size:.88rem;line-height:1.6;text-shadow:0 1px 6px rgba(0,0,0,0.5);">Conheça o JOFA — Grupo de Jovens do Santuário de Nossa Senhora de Fátima, Rio Grande/RS</p>
+    </div>
+  </div>
+
+  <section class="content-section">
+    <div class="section-inner">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin-bottom:72px;" class="sobre-grid">
+        <div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:.72rem;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:12px;">Nossa História</div>
+          <h2 class="section-title" style="text-transform:none;font-size:clamp(1.5rem,3vw,2.2rem);line-height:1.2;margin-bottom:0;">O JOFA nasce da devoção<br>a Nossa Senhora de Fátima</h2>
+          <div class="gold-line"></div>
+          <p style="font-size:.95rem;color:var(--text-mid);line-height:1.8;margin-bottom:16px;">O <strong style="color:var(--text-dark);">JOFA — Jovens de Fátima</strong> é um grupo de jovens vinculado ao <strong style="color:var(--text-dark);">Santuário de Nossa Senhora de Fátima</strong> em Rio Grande, RS. Nasceu do desejo de reunir jovens em torno da espiritualidade mariana e das aparições de Fátima de 1917.</p>
+          <p style="font-size:.95rem;color:var(--text-mid);line-height:1.8;margin-bottom:16px;">Nossa missão é proporcionar um espaço de fé, amizade e crescimento espiritual para jovens de <strong style="color:var(--text-dark);">12 a 22 anos</strong>, inspirados pelo "sim" de Maria — o Fiat que mudou a história da humanidade.</p>
+          <p style="font-size:.95rem;color:var(--text-mid);line-height:1.8;">Cada encontro é pensado para conectar a mensagem de Fátima com a realidade da juventude de hoje: os desafios, as dúvidas, as alegrias e a busca por sentido.</p>
+        </div>
+        <div style="border-radius:20px;overflow:hidden;position:relative;">
+          <img src="assets/images/photo-sobre.jpg" alt="Grupo JOFA no Santuário" style="width:100%;height:380px;-webkit-object-fit:cover;object-fit:cover;object-position:center 10%;border-radius:20px;display:block;">
+          <div style="position:absolute;bottom:20px;left:20px;right:20px;background:rgba(13,27,62,0.85);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:12px;padding:16px;border:1px solid rgba(201,168,76,0.3);">
+            <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:.8rem;color:var(--gold);letter-spacing:1px;">SANTUÁRIO DE FÁTIMA</div>
+            <div style="font-size:.8rem;color:rgba(255,255,255,.8);margin-top:2px;">Rio Grande, RS — Brasil</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Valores -->
+      <h2 class="section-title reveal" style="margin-bottom:6px;">Nossa Espiritualidade</h2>
+      <div class="gold-line"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:72px;" class="valores-grid">
+        <div class="reveal reveal-delay-1" style="background:var(--card-bg);border-radius:16px;padding:28px 24px;box-shadow:var(--card-shadow);border:1px solid var(--border);text-align:center;">
+          <div style="font-size:40px;margin-bottom:14px;">👑</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1rem;color:var(--text-dark);margin-bottom:8px;">As Aparições de Fátima</div>
+          <p style="font-size:.85rem;color:var(--text-mid);line-height:1.7;">Inspirados pelas aparições de Nossa Senhora aos três pastorinhos em 1917, vivemos a espiritualidade do rosário, da penitência e da consagração ao Coração Imaculado de Maria.</p>
+        </div>
+        <div class="reveal reveal-delay-2" style="background:var(--card-bg);border-radius:16px;padding:28px 24px;box-shadow:var(--card-shadow);border:1px solid var(--border);text-align:center;">
+          <div style="font-size:40px;margin-bottom:14px;">📿</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1rem;color:var(--text-dark);margin-bottom:8px;">Oração e Eucaristia</div>
+          <p style="font-size:.85rem;color:var(--text-mid);line-height:1.7;">Cada reunião acontece às <strong style="color:var(--gold);">sextas-feiras às 19h30</strong>, logo após a Missa das 19h no Santuário — unindo a Eucaristia com o encontro de jovens.</p>
+        </div>
+        <div class="reveal reveal-delay-3" style="background:var(--card-bg);border-radius:16px;padding:28px 24px;box-shadow:var(--card-shadow);border:1px solid var(--border);text-align:center;">
+          <div style="font-size:40px;margin-bottom:14px;">🤝</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1rem;color:var(--text-dark);margin-bottom:8px;">Comunidade e Missão</div>
+          <p style="font-size:.85rem;color:var(--text-mid);line-height:1.7;">Somos uma família que caminha junta na fé. Do louvor ao serviço, passando pela catequese e pelos retiros, vivemos o Evangelho de forma concreta e alegre.</p>
+        </div>
+      </div>
+
+      <!-- Quando/Onde -->
+      <div class="reveal" style="background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 100%);border-radius:20px;padding:48px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px;text-align:center;margin-bottom:72px;" class="info-grid">
+        <div>
+          <div style="font-size:36px;margin-bottom:12px;">📅</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.1rem;color:var(--gold);margin-bottom:6px;">Quando</div>
+          <div style="font-size:.9rem;color:rgba(255,255,255,.8);line-height:1.7;">Toda <strong style="color:white;">Sexta-feira</strong><br>às <strong style="color:white;">19h30</strong><br><span style="font-size:.78rem;color:rgba(255,255,255,.5);">logo após a Missa das 19h</span></div>
+        </div>
+        <div>
+          <div style="font-size:36px;margin-bottom:12px;">📍</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.1rem;color:var(--gold);margin-bottom:6px;">Onde</div>
+          <div style="font-size:.9rem;color:rgba(255,255,255,.8);line-height:1.7;">Santuário de<br><strong style="color:white;">Nossa Senhora de Fátima</strong><br><span style="font-size:.78rem;color:rgba(255,255,255,.5);">Rio Grande, RS</span></div>
+        </div>
+        <div>
+          <div style="font-size:36px;margin-bottom:12px;">👥</div>
+          <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.1rem;color:var(--gold);margin-bottom:6px;">Para quem</div>
+          <div style="font-size:.9rem;color:rgba(255,255,255,.8);line-height:1.7;">Jovens de<br><strong style="color:white;">12 a 22 anos</strong><br><span style="font-size:.78rem;color:rgba(255,255,255,.5);">entrada gratuita e aberta</span></div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="reveal" style="text-align:center;padding:40px 0;">
+        <h3 style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1.5rem;color:var(--text-dark);margin-bottom:12px;">Quer fazer parte do JOFA?</h3>
+        <p style="color:var(--text-mid);margin-bottom:28px;font-size:.95rem;">Venha nos visitar qualquer sexta-feira às 19h30, logo após a Missa!</p>
+      </div>
+  </section>
+</div>
+
+<!-- QUICK ACCESS -->
+<div class="overlay-bg" id="overlayBg" onclick="closeOverlay()"></div>
+<div class="quick-panel" id="quickPanel">
+  <button class="quick-close" onclick="closeOverlay()">✕</button>
+  <div class="qp-head"><h2>Acesso Rápido</h2><p>Atalhos para tudo que você precisa</p></div>
+  <div class="qlinks">
+    <a class="qlink" href="#" onclick="showPage('reunioes');closeOverlay();return false;"><div class="qlink-icon">📖</div><div class="qlink-text"><strong>Última Reunião</strong><span>Ver resumo do encontro</span></div></a>
+    <a class="qlink" href="#"><div class="qlink-icon">🙏</div><div class="qlink-text"><strong>Pedidos de Oração</strong><span>Enviar sua intenção</span></div></a>
+    <a class="qlink" href="#" onclick="showPage('agenda');closeOverlay();return false;"><div class="qlink-icon">📅</div><div class="qlink-text"><strong>Calendário de Eventos</strong><span>Próximos encontros</span></div></a>
+    <a class="qlink" href="#"><div class="qlink-icon">⬇️</div><div class="qlink-text"><strong>Downloads</strong><span>Cifras, wallpapers e mais</span></div></a>
+    <a class="qlink" href="#"><div class="qlink-icon">🌟</div><div class="qlink-text"><strong>Oportunidades</strong><span>Projetos sociais e vagas</span></div></a>
+  </div>
+  
+</div>
+
+<script src="assets/main.js" defer></script>
+
+<!-- ADMIN FAB BUTTON -->
+<button class="admin-fab" onclick="openAdmin()" title="Painel Admin">⚙️</button>
+
+<!-- ADMIN OVERLAY -->
+<div class="admin-overlay" id="adminOverlay" onclick="closeAdmin()"></div>
+
+<!-- ADMIN PANEL -->
+<div class="admin-panel" id="adminPanel">
+  <div class="admin-header">
+    <h2>⚙️ Painel Admin <span class="admin-badge">JOFA</span></h2>
+    <button class="admin-close-btn" onclick="closeAdmin()">&#x2715;</button>
+  </div>
+  <div id="adminLogin" class="admin-body" style="display:flex;align-items:center;justify-content:center;">
+    <div class="admin-login">
+      <div style="font-size:40px;margin-bottom:12px">&#128272;</div>
+      <h3>&#193;rea Restrita</h3>
+      <p>Acesso exclusivo para a equipe do JOFA</p>
+      <input type="email" id="adminEmail" placeholder="E-mail..." value="primoimoias@gmail.com" style="margin-bottom:8px;" onkeydown="if(event.key==='Enter')checkAdmin()">
+      <input type="password" id="adminPassword" placeholder="Senha..." onkeydown="if(event.key==='Enter')checkAdmin()">
+      <button class="admin-login-btn" onclick="checkAdmin()" id="adminLoginBtn">Entrar no Painel</button>
+      <div class="admin-login-error" id="adminError">Credenciais incorretas. Tente novamente.</div>
+    </div>
+  </div>
+  <div id="adminContent" style="display:none;">
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="testemunhos" onclick="switchTab('testemunhos',this)">💬 Testemunhos <span class="tab-count">5</span></button>
+      <button class="admin-tab" data-tab="reunioes" onclick="switchTab('reunioes',this)">📖 Reuniões <span class="tab-count">6</span></button>
+      <button class="admin-tab" data-tab="galeria" onclick="switchTab('galeria',this)">🖼️ Galeria <span class="tab-count">6</span></button>
+      <button class="admin-tab" data-tab="agenda" onclick="switchTab('agenda',this)">📅 Agenda <span class="tab-count">7</span></button>
+    </div>
+    <div class="admin-body" id="adminBody"></div>
+    <div class="admin-footer">
+      <button class="admin-save-btn" onclick="saveAllData()">💾 Salvar e Publicar Todas as Alterações</button>
+    </div>
+  </div>
+</div>
+<div class="admin-toast" id="adminToast"></div>
+
+</body>
+</html>
